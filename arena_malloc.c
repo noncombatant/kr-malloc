@@ -8,6 +8,9 @@
 
 #include "arena_malloc.h"
 
+#define add(a, b, result) __builtin_add_overflow(a, b, result)
+#define mul(a, b, result) __builtin_mul_overflow(a, b, result)
+
 size_t default_minimum_chunk_units = ((size_t)1 << 21) / sizeof(Header);
 static size_t page_size = 0;
 
@@ -107,9 +110,12 @@ static Header* get_more_memory(Arena* a, size_t unit_count) {
   if (unit_count < a->minimum_chunk_units) {
     unit_count = a->minimum_chunk_units;
   }
-  size_t byte_count = unit_count * sizeof(Header);
-  byte_count += page_size;
-  // TODO check all arithmetic with named functions
+  size_t byte_count;
+  if (mul(unit_count, sizeof(Header), &byte_count) ||
+      add(byte_count, page_size, &byte_count)) {
+    errno = EINVAL;
+    return NULL;
+  }
 
   Chunk* chunk = mmap(NULL, byte_count, PROT_READ | PROT_WRITE,
                       MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
@@ -125,16 +131,20 @@ static Header* get_more_memory(Arena* a, size_t unit_count) {
 }
 
 void* arena_malloc(Arena* a, size_t count, size_t size) {
-  const size_t byte_count = count * size;
-  if (byte_count < count || byte_count < size) {
+  size_t byte_count;
+  if (mul(count, size, &byte_count)) {
     errno = EINVAL;
     return NULL;
   }
 
   // Round up to an integer number of `Header`-sized units, and add 1 to account
   // for the actual `Header` metadata that describes the region.
-  const size_t unit_count =
-      (byte_count + sizeof(Header) - 1) / sizeof(Header) + 1;
+  size_t unit_count;
+  if (add(byte_count, sizeof(Header) - 1, &unit_count)) {
+    errno = EINVAL;
+    return NULL;
+  }
+  unit_count = unit_count / sizeof(Header) + 1;
 
   Header* p;
   Header* previous;
