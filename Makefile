@@ -1,7 +1,13 @@
 CC = clang
 CFLAGS = -Weverything -std=c2x -O3 -Wno-poison-system-directories
 
-all: original modern
+all: original modern arena
+
+original: kr_malloc_test.c original_kr_malloc.c original_kr_malloc.h get_utc_nanoseconds.c
+	cp original_kr_malloc.c kr_malloc.c
+	cp original_kr_malloc.h kr_malloc.h
+	$(CC) $(CFLAGS) -DORIGINAL_FLAVOR -o kr_malloc_test kr_malloc_test.c kr_malloc.c get_utc_nanoseconds.c
+	./kr_malloc_test
 
 modern: kr_malloc_test.c modern_kr_malloc.c modern_kr_malloc.h get_utc_nanoseconds.c
 	cp modern_kr_malloc.c kr_malloc.c
@@ -9,10 +15,10 @@ modern: kr_malloc_test.c modern_kr_malloc.c modern_kr_malloc.h get_utc_nanosecon
 	$(CC) $(CFLAGS) -o kr_malloc_test kr_malloc_test.c kr_malloc.c get_utc_nanoseconds.c
 	./kr_malloc_test
 
-original: kr_malloc_test.c original_kr_malloc.c original_kr_malloc.h get_utc_nanoseconds.c
-	cp original_kr_malloc.c kr_malloc.c
-	cp original_kr_malloc.h kr_malloc.h
-	$(CC) $(CFLAGS) -DORIGINAL_FLAVOR -o kr_malloc_test kr_malloc_test.c kr_malloc.c get_utc_nanoseconds.c
+arena: kr_malloc_test.c arena_malloc.c arena_malloc.h get_utc_nanoseconds.c
+	cp arena_malloc.c kr_malloc.c
+	cp arena_malloc.h kr_malloc.h
+	$(CC) $(CFLAGS) -DARENA -o kr_malloc_test kr_malloc_test.c arena_malloc.c get_utc_nanoseconds.c
 	./kr_malloc_test
 
 clean:

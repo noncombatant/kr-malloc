@@ -18,11 +18,18 @@ int main() {
     ps[i] = NULL;
   }
 
+#if defined(ARENA)
+  Arena a;
+  arena_open(&a, default_minimum_chunk_size);
+#endif
+
   const int64_t start = GetUTCNanoseconds();
 
   for (size_t i = 1; i < iterations; i++) {
-#ifdef ORIGINAL_FLAVOR
+#if defined(ORIGINAL_FLAVOR)
     char* p = kr_malloc(i * 1);
+#elif defined(ARENA)
+    char* p = arena_malloc(&a, i, 1);
 #else
     char* p = kr_malloc(i, 1);
 #endif
@@ -36,7 +43,11 @@ int main() {
   const int64_t after_allocations = GetUTCNanoseconds();
 
   for (size_t i = 1; i < iterations; i++) {
+#if defined(ARENA)
+    arena_free(&a, ps[i]);
+#else
     kr_free(ps[i]);
+#endif
   }
 
   const int64_t end = GetUTCNanoseconds();
