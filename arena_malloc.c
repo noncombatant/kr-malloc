@@ -37,13 +37,6 @@ static void prepend_chunk(Arena* a, Chunk* chunk, size_t byte_count) {
 
 // Puts the memory region `p` points to back onto the free list. This function
 // is both part of the implementation of `arena_free` and of `get_more_memory`.
-//
-// TODO: Extend this to take a `size_t unit_count`, and extend `Chunk` to
-// remember whether the chunk was caller-provided or system-provided
-// (`get_more_memory`) (so that `arena_destroy` doesn’t try to `munmap`
-// caller-provided memory). Similarly, extend `Arena` with an OOM-policy field,
-// so that callers can avoid calling `get_more_memory` if their caller-provided
-// chunk is exhausted.
 static void free_internal(Arena* a, void* p) {
   // The `Header` is always immediately before the region we returned to the
   // caller of `malloc`.
