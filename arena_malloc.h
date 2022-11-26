@@ -4,7 +4,7 @@
 // No user-serviceable parts inside.
 typedef struct Header {
   struct Header* next;
-  size_t size;
+  size_t unit_count;
   // Add padding if the `static_assert` below fires.
   // char _[count];
 } Header;
@@ -19,7 +19,7 @@ static_assert(sizeof(Header) == sizeof(Alignment), "Add padding to `Header`");
 // No user-serviceable parts inside.
 typedef struct Chunk {
   struct Chunk* next;
-  size_t size;
+  size_t byte_count;
 } Chunk;
 
 // No user-serviceable parts inside. See `arena_create`.
@@ -43,7 +43,8 @@ typedef struct Arena {
 // applications. It is tuned to be appropriate for the platform.
 extern size_t default_minimum_chunk_size;
 
-// Initializes the new `Arena`, setting its `minimum_chunk_size`.
+// Initializes the new `Arena`, setting its `minimum_chunk_size`, which is
+// measured in `sizeof(Header)` _units_.
 void arena_create(Arena* a, size_t minimum_chunk_size);
 
 // Returns a pointer to a memory region containing at least `count * size`

@@ -3,76 +3,132 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <unistd.h>
 
 #include "arena_malloc.h"
 
 size_t default_minimum_chunk_size = ((size_t)1 << 21) / sizeof(Header);
+static size_t page_size = 0;
 
 void arena_create(Arena* a, size_t minimum_chunk_size) {
   a->chunk_list = NULL;
   a->free_list.next = NULL;
-  a->free_list.size = 0;
+  a->free_list.unit_count = 0;
   a->free_list_start = NULL;
   a->minimum_chunk_size = minimum_chunk_size;
 }
 
 // Prepends the new `Chunk`, of `byte_count` bytes, to the `a->chunk_list`.
 static void prepend_chunk(Arena* a, Chunk* chunk, size_t byte_count) {
+  assert(page_size != 0);
+  assert(byte_count % page_size == 0);
   if (a->chunk_list == NULL) {
     a->chunk_list = chunk;
     a->chunk_list->next = NULL;
-    a->chunk_list->size = byte_count;
+    a->chunk_list->byte_count = byte_count;
   } else {
     Chunk* c = a->chunk_list;
     a->chunk_list = chunk;
     a->chunk_list->next = c;
-    a->chunk_list->size = byte_count;
+    a->chunk_list->byte_count = byte_count;
   }
 }
 
-// Returns a pointer to a memory region containing at least `count`
-// `Header`-sized objects.
+// Puts the memory region `p` points to back onto the free list. This function
+// is both part of the implementation of `arena_free` and of `get_more_memory`.
 //
-// Returns `NULL` and sets `errno` if there was an error.
-static Header* get_more_memory(Arena* a, size_t count) {
-  static size_t page_size = 0;
-  if (page_size == 0) {
-    page_size = (size_t)sysconf(_SC_PAGESIZE);
+// TODO: Extend this to take a `size_t unit_count`, and extend `Chunk` to
+// remember whether the chunk was caller-provided or system-provided
+// (`get_more_memory`) (so that `arena_destroy` doesn’t try to `munmap`
+// caller-provided memory). Similarly, extend `Arena` with an OOM-policy field,
+// so that callers can avoid calling `get_more_memory` if their caller-provided
+// chunk is exhausted.
+static void free_internal(Arena* a, void* p) {
+  // The `Header` is always immediately before the region we returned to the
+  // caller of `malloc`.
+  Header* h = (Header*)p - 1;
+
+  // Iterate over `free_list` looking for the segment containing `h`.
+  Header* current;
+  for (current = a->free_list_start; !(h > current && h < current->next);
+       current = current->next) {
+    if (current >= current->next && (h > current || h < current->next)) {
+      // Freed block at start of end of arena.
+      break;
+    }
   }
 
-  if (count < a->minimum_chunk_size) {
-    count = a->minimum_chunk_size;
+  // If `h` is at the beginning of the segment, join it to the end.
+  if (h + h->unit_count == current->next) {
+    h->unit_count += current->next->unit_count;
+    h->next = current->next->next;
+  } else {
+    h->next = current->next;
   }
-  const size_t byte_count = count * sizeof(Header);
-  // TODO check that arithmetic
-  Chunk* chunk =
-      mmap(NULL, page_size + byte_count, PROT_READ | PROT_WRITE,
-           MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
-  if (chunk == MAP_FAILED) {
-    return NULL;
-  }
-  prepend_chunk(a, chunk, byte_count);
 
+  // If `h` is at the end of the segment, join it to the beginning. These 2
+  // joins ensure that we coalesce segments into larger segments.
+  if (current + current->unit_count == h) {
+    current->unit_count += h->unit_count;
+    current->next = h->next;
+  } else {
+    current->next = h;
+  }
+
+  a->free_list_start = current;
+}
+
+// Returns a pointer to the 1st `Header` in the `Chunk`.
+static Header* get_1st_header(Chunk* chunk) {
   // Advance past the 1st page, which we use solely for `a->chunk_list`. Yes, we
   // waste 1 page just to hold the `Chunk` structure. The other alternative is
   // to maintain a dedicated memory mapping for it. That could be more
   // space-efficient, at the cost of additional code and (possibly?) reduced
   // data locality.
-  //
+  char* char_chunk = (char*)chunk;
+  char_chunk += page_size;
+
   // Regarding this pointer trickery, clang warns us:
   //
   //   cast from 'char *' to 'Header *' (aka 'union header *') increases
   //   required alignment from 1 to 8 [-Wcast-align]
   //
   // so we assert that we are still aligned, as documentation:
-  assert((intptr_t)chunk % 8 == 0);
+  assert((uintptr_t)chunk % 8 == 0);
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wcast-align"
-  Header* h = (Header*)((char*)chunk + page_size);
+  return (Header*)char_chunk;
 #pragma clang diagnostic pop
-  h->size = count;
-  arena_free(a, h + 1);
+}
+
+// Returns a pointer to a memory region containing at least `count`
+// `Header`-sized objects.
+//
+// Returns `NULL` and sets `errno` if there was an error.
+static Header* get_more_memory(Arena* a, size_t unit_count) {
+  if (page_size == 0) {
+    page_size = (size_t)sysconf(_SC_PAGESIZE);
+  }
+
+  if (unit_count < a->minimum_chunk_size) {
+    unit_count = a->minimum_chunk_size;
+  }
+  size_t byte_count = unit_count * sizeof(Header);
+  byte_count += page_size;
+  // TODO check all arithmetic with named functions
+
+  Chunk* chunk =
+      mmap(NULL, byte_count, PROT_READ | PROT_WRITE,
+           MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+  if (chunk == MAP_FAILED) {
+    return NULL;
+  }
+  prepend_chunk(a, chunk, byte_count);
+
+  Header* h = get_1st_header(chunk);
+  h->unit_count = unit_count;
+  free_internal(a, h + 1);
   return a->free_list_start;
 }
 
@@ -96,25 +152,25 @@ void* arena_malloc(Arena* a, size_t count, size_t size) {
   // `get_more_memory` on the 1st iteration.
   if ((previous = a->free_list_start) == NULL) {
     a->free_list.next = a->free_list_start = previous = &(a->free_list);
-    a->free_list.size = 0;
+    a->free_list.unit_count = 0;
   }
 
   // Iterate down `a->free_list`, looking for regions large enough or requesting
   // a new region from the platform.
   for (p = previous->next; true; previous = p, p = p->next) {
-    if (p->size >= unit_count) {
-      if (p->size == unit_count) {
+    if (p->unit_count >= unit_count) {
+      if (p->unit_count == unit_count) {
         // If this region is exactly the size we need, we're done.
         previous->next = p->next;
       } else {
         // If this region is larger than we need, return the tail end of it to
         // the caller, and adjust the size of the region `Header`.
-        p->size -= unit_count;
-        p += p->size;
-        p->size = unit_count;
+        p->unit_count -= unit_count;
+        p += p->unit_count;
+        p->unit_count = unit_count;
       }
       a->free_list_start = previous;
-      return (void*)(p + 1);
+      return p + 1;
     }
 
     // If we have wrapped around to the beginning of `free_list` (its end always
@@ -127,45 +183,42 @@ void* arena_malloc(Arena* a, size_t count, size_t size) {
   }
 }
 
-void arena_free(Arena* a, void* p) {
-  // The `Header` is always immediately before the region we returned to the
-  // caller of `malloc`.
-  Header* h = (Header*)p - 1;
+// Now that we have the `Chunk` information in the `Arena`, we can test to see
+// whether `p` is actually in any chunk we have allocated. That is still not a
+// perfect test that `p` is exactly a pointer previously returned by
+// `arena_malloc`, but it’s better than what we started with.
+//
+// `assert`s false if `p` is not inside a known `Chunk`.
+static void check_free(Arena* a, void* p) {
+  assert(page_size != 0);
 
-  // Iterate over `free_list` looking for the segment containing `h`.
-  Header* current;
-  for (current = a->free_list_start; !(h > current && h < current->next);
-       current = current->next) {
-    if (current >= current->next && (h > current || h < current->next)) {
-      // Freed block at start of end of arena.
-      break;
+  const uintptr_t pu = (uintptr_t)p;
+  uintptr_t usable_start = 0, usable_end = 0;
+  for (Chunk* c = a->chunk_list; c != NULL; c = c->next) {
+    const uintptr_t cu = (uintptr_t)c;
+    assert(cu % page_size == 0);
+
+    usable_start = cu + page_size;
+    usable_end = cu + c->byte_count - sizeof(Header);
+    if (pu >= usable_start && pu <= usable_end) {
+      return;
     }
   }
 
-  // If `h` is at the beginning of the segment, join it to the end.
-  if (h + h->size == current->next) {
-    h->size += current->next->size;
-    h->next = current->next->next;
-  } else {
-    h->next = current->next;
-  }
+  // There’s nothing we can do. The caller has made an error, and we’re all
+  // going to die.
+  assert(false);
+}
 
-  // If `h` is at the end of the segment, join it to the beginning. These 2
-  // joins ensure that we coalesce segments into larger segments.
-  if (current + current->size == h) {
-    current->size += h->size;
-    current->next = h->next;
-  } else {
-    current->next = h;
-  }
-
-  a->free_list_start = current;
+void arena_free(Arena* a, void* p) {
+  check_free(a, p);
+  free_internal(a, p);
 }
 
 void arena_destroy(Arena* a) {
   for (Chunk* c = a->chunk_list; c != NULL;) {
     Chunk* next = c->next;
-    const int r = munmap(c, c->size);
+    const int r = munmap(c, c->byte_count);
     assert(r == 0);
     c = next;
   }

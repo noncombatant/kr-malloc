@@ -18,7 +18,7 @@ modern: kr_malloc_test.c modern_kr_malloc.c modern_kr_malloc.h get_utc_nanosecon
 arena: kr_malloc_test.c arena_malloc.c arena_malloc.h get_utc_nanoseconds.c
 	cp arena_malloc.c kr_malloc.c
 	cp arena_malloc.h kr_malloc.h
-	$(CC) $(CFLAGS) -DARENA -o kr_malloc_test kr_malloc_test.c arena_malloc.c get_utc_nanoseconds.c
+	$(CC) $(CFLAGS) -DARENA -o kr_malloc_test kr_malloc_test.c kr_malloc.c get_utc_nanoseconds.c
 	./kr_malloc_test
 
 clean:
