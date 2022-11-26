@@ -8,15 +8,15 @@
 
 #include "arena_malloc.h"
 
-size_t default_minimum_chunk_size = ((size_t)1 << 21) / sizeof(Header);
+size_t default_minimum_chunk_units = ((size_t)1 << 21) / sizeof(Header);
 static size_t page_size = 0;
 
-void arena_create(Arena* a, size_t minimum_chunk_size) {
+void arena_create(Arena* a, size_t minimum_chunk_units) {
   a->chunk_list = NULL;
   a->free_list.next = NULL;
   a->free_list.unit_count = 0;
   a->free_list_start = NULL;
-  a->minimum_chunk_size = minimum_chunk_size;
+  a->minimum_chunk_units = minimum_chunk_units;
 }
 
 // Prepends the new `Chunk`, of `byte_count` bytes, to the `a->chunk_list`.
@@ -111,16 +111,15 @@ static Header* get_more_memory(Arena* a, size_t unit_count) {
     page_size = (size_t)sysconf(_SC_PAGESIZE);
   }
 
-  if (unit_count < a->minimum_chunk_size) {
-    unit_count = a->minimum_chunk_size;
+  if (unit_count < a->minimum_chunk_units) {
+    unit_count = a->minimum_chunk_units;
   }
   size_t byte_count = unit_count * sizeof(Header);
   byte_count += page_size;
   // TODO check all arithmetic with named functions
 
-  Chunk* chunk =
-      mmap(NULL, byte_count, PROT_READ | PROT_WRITE,
-           MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+  Chunk* chunk = mmap(NULL, byte_count, PROT_READ | PROT_WRITE,
+                      MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
   if (chunk == MAP_FAILED) {
     return NULL;
   }

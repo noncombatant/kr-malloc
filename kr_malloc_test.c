@@ -20,7 +20,7 @@ int main() {
 
 #if defined(ARENA)
   Arena a;
-  arena_create(&a, default_minimum_chunk_size);
+  arena_create(&a, default_minimum_chunk_units);
 #endif
 
   const int64_t start = GetUTCNanoseconds();

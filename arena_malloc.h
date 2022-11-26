@@ -6,13 +6,13 @@
 // object lifetime, or whatever you like.
 typedef struct Arena Arena;
 
-// Initializes the new `Arena`, setting its `minimum_chunk_size`, which is
+// Initializes the new `Arena`, setting its `minimum_chunk_units`, which is
 // measured in `sizeof(Header)` _units_.
-void arena_create(Arena* a, size_t minimum_chunk_size);
+void arena_create(Arena* a, size_t minimum_chunk_units);
 
-// This is a good value to use for `Arena.minimum_chunk_size` for most
+// This is a good value to use for `Arena.minimum_chunk_units` for most
 // applications. It is tuned to be appropriate for the platform.
-extern size_t default_minimum_chunk_size;
+extern size_t default_minimum_chunk_units;
 
 // Returns a pointer to a memory region containing at least `count * size`
 // bytes. Checks the multiplication for overflow.
@@ -63,5 +63,5 @@ struct Arena {
   // should be chosen (a) to reduce pressure on the page table; and (b) to
   // reduce
   // the number of times we need to invoke the kernel.
-  size_t minimum_chunk_size;
+  size_t minimum_chunk_units;
 };
