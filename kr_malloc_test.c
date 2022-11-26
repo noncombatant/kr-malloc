@@ -20,7 +20,7 @@ int main() {
 
 #if defined(ARENA)
   Arena a;
-  arena_open(&a, default_minimum_chunk_size);
+  arena_create(&a, default_minimum_chunk_size);
 #endif
 
   const int64_t start = GetUTCNanoseconds();
@@ -54,4 +54,8 @@ int main() {
   printf("total: %" PRId64 " ns = mallocs %" PRId64 " ns + frees %" PRId64
          " ns\n",
          end - start, after_allocations - start, end - after_allocations);
+
+#if defined(ARENA)
+  arena_destroy(&a);
+#endif
 }

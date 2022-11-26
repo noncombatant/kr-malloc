@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stddef.h>
 
+// No user-serviceable parts inside.
 typedef struct Header {
   struct Header* next;
   size_t size;
@@ -15,7 +16,16 @@ typedef struct Header {
 typedef long double Alignment;
 static_assert(sizeof(Header) == sizeof(Alignment), "Add padding to `Header`");
 
+// No user-serviceable parts inside.
+typedef struct Chunk {
+  struct Chunk* next;
+  size_t size;
+} Chunk;
+
+// No user-serviceable parts inside. See `arena_create`.
 typedef struct Arena {
+  Chunk* chunk_list;
+
   Header free_list;
 
   // `NULL` is a sentinel value indicating that `free_list` has not yet been
@@ -23,7 +33,8 @@ typedef struct Arena {
   Header* free_list_start;
 
   // We always request at least this amount from the operating system. The value
-  // should be chosen (a) to reduce pressure on the page table; and (b) to reduce
+  // should be chosen (a) to reduce pressure on the page table; and (b) to
+  // reduce
   // the number of times we need to invoke the kernel.
   size_t minimum_chunk_size;
 } Arena;
@@ -33,7 +44,7 @@ typedef struct Arena {
 extern size_t default_minimum_chunk_size;
 
 // Initializes the new `Arena`, setting its `minimum_chunk_size`.
-void arena_open(Arena* a, size_t minimum_chunk_size);
+void arena_create(Arena* a, size_t minimum_chunk_size);
 
 // Returns a pointer to a memory region containing at least `count * size`
 // bytes. Checks the multiplication for overflow.
@@ -48,4 +59,4 @@ void arena_free(Arena* a, void* p);
 
 // Returns all memory in the `Arena` back to the platform. All allocations made
 // inside the arena will be invalid after this function returns.
-void arena_close(Arena* a);
+void arena_destroy(Arena* a);

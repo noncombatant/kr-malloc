@@ -3,16 +3,32 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <unistd.h>
 
 #include "arena_malloc.h"
 
 size_t default_minimum_chunk_size = ((size_t)1 << 21) / sizeof(Header);
 
-void arena_open(Arena* a, size_t minimum_chunk_size) {
+void arena_create(Arena* a, size_t minimum_chunk_size) {
+  a->chunk_list = NULL;
   a->free_list.next = NULL;
   a->free_list.size = 0;
   a->free_list_start = NULL;
   a->minimum_chunk_size = minimum_chunk_size;
+}
+
+// Prepends the new `Chunk`, of `byte_count` bytes, to the `a->chunk_list`.
+static void prepend_chunk(Arena* a, Chunk* chunk, size_t byte_count) {
+  if (a->chunk_list == NULL) {
+    a->chunk_list = chunk;
+    a->chunk_list->next = NULL;
+    a->chunk_list->size = byte_count;
+  } else {
+    Chunk* c = a->chunk_list;
+    a->chunk_list = chunk;
+    a->chunk_list->next = c;
+    a->chunk_list->size = byte_count;
+  }
 }
 
 // Returns a pointer to a memory region containing at least `count`
@@ -20,14 +36,41 @@ void arena_open(Arena* a, size_t minimum_chunk_size) {
 //
 // Returns `NULL` and sets `errno` if there was an error.
 static Header* get_more_memory(Arena* a, size_t count) {
+  static size_t page_size = 0;
+  if (page_size == 0) {
+    page_size = (size_t)sysconf(_SC_PAGESIZE);
+  }
+
   if (count < a->minimum_chunk_size) {
     count = a->minimum_chunk_size;
   }
-  Header* h = mmap(NULL, count * sizeof(Header), PROT_READ | PROT_WRITE,
-                   MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
-  if (h == MAP_FAILED) {
+  const size_t byte_count = count * sizeof(Header);
+  // TODO check that arithmetic
+  Chunk* chunk =
+      mmap(NULL, page_size + byte_count, PROT_READ | PROT_WRITE,
+           MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+  if (chunk == MAP_FAILED) {
     return NULL;
   }
+  prepend_chunk(a, chunk, byte_count);
+
+  // Advance past the 1st page, which we use solely for `a->chunk_list`. Yes, we
+  // waste 1 page just to hold the `Chunk` structure. The other alternative is
+  // to maintain a dedicated memory mapping for it. That could be more
+  // space-efficient, at the cost of additional code and (possibly?) reduced
+  // data locality.
+  //
+  // Regarding this pointer trickery, clang warns us:
+  //
+  //   cast from 'char *' to 'Header *' (aka 'union header *') increases
+  //   required alignment from 1 to 8 [-Wcast-align]
+  //
+  // so we assert that we are still aligned, as documentation:
+  assert((intptr_t)chunk % 8 == 0);
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcast-align"
+  Header* h = (Header*)((char*)chunk + page_size);
+#pragma clang diagnostic pop
   h->size = count;
   arena_free(a, h + 1);
   return a->free_list_start;
@@ -48,16 +91,16 @@ void* arena_malloc(Arena* a, size_t count, size_t size) {
   Header* p;
   Header* previous;
 
-  // Determine whether `free_list` has been initialized. Note that if it has not
-  // been, the `for` loop below this one will fall through to the call to
+  // Determine whether `a->free_list` has been initialized. Note that if it has
+  // not been, the `for` loop below this one will fall through to the call to
   // `get_more_memory` on the 1st iteration.
   if ((previous = a->free_list_start) == NULL) {
     a->free_list.next = a->free_list_start = previous = &(a->free_list);
     a->free_list.size = 0;
   }
 
-  // Iterate down `free_list`, looking for regions large enough or requesting a
-  // new region from the platform.
+  // Iterate down `a->free_list`, looking for regions large enough or requesting
+  // a new region from the platform.
   for (p = previous->next; true; previous = p, p = p->next) {
     if (p->size >= unit_count) {
       if (p->size == unit_count) {
@@ -119,7 +162,11 @@ void arena_free(Arena* a, void* p) {
   a->free_list_start = current;
 }
 
-void arena_close(Arena* a) {
-  // TODO
-  (void)a;
+void arena_destroy(Arena* a) {
+  for (Chunk* c = a->chunk_list; c != NULL;) {
+    Chunk* next = c->next;
+    const int r = munmap(c, c->size);
+    assert(r == 0);
+    c = next;
+  }
 }
