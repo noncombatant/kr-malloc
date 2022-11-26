@@ -49,10 +49,6 @@ static Header* get_more_memory(size_t count) {
   return free_list_start;
 }
 
-// Returns a pointer to a memory region containing at least `count * size`
-// bytes. Checks the multiplication for overflow.
-//
-// Returns `NULL` and sets `errno` if there was an error.
 void* kr_malloc(size_t count, size_t size) {
   const size_t byte_count = count * size;
   if (byte_count < count || byte_count < size) {
@@ -104,7 +100,6 @@ void* kr_malloc(size_t count, size_t size) {
   }
 }
 
-// Puts the memory region that `p` points to back onto `free_list`.
 void kr_free(void* p) {
   // The `Header` is always immediately before the region we returned to the
   // caller of `malloc`.
