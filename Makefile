@@ -1,5 +1,8 @@
 CC = clang
-CFLAGS = -Weverything -std=c2x -O3 -Wno-poison-system-directories
+STANDARD = -Weverything -std=c2x -Wno-poison-system-directories
+DEBUG = -g -O0
+RELEASE = -O3
+CFLAGS = $(STANDARD) $(RELEASE)
 
 all: original modern arena
 
