@@ -30,6 +30,11 @@ void arena_create(Arena* a, size_t minimum_chunk_units) {
   if (a == NULL) {
     abort();
   }
+  if (page_size == 0) {
+    page_size = (size_t)sysconf(_SC_PAGESIZE);
+  }
+  const size_t m = page_size / sizeof(Header);
+  minimum_chunk_units = minimum_chunk_units >= m ? minimum_chunk_units : m;
   arena_create_internal(a, minimum_chunk_units);
 }
 
@@ -114,10 +119,6 @@ static Header* get_1st_header(Chunk* chunk) {
 //
 // Returns `NULL` and sets `errno` if there was an error.
 static Header* get_more_memory(Arena* a, size_t unit_count) {
-  if (page_size == 0) {
-    page_size = (size_t)sysconf(_SC_PAGESIZE);
-  }
-
   if (unit_count < a->minimum_chunk_units) {
     unit_count = a->minimum_chunk_units;
   }
