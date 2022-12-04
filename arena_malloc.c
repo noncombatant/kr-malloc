@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include "arena_malloc.h"
@@ -11,15 +12,25 @@
 #define add(a, b, result) __builtin_add_overflow(a, b, result)
 #define mul(a, b, result) __builtin_mul_overflow(a, b, result)
 
-size_t default_minimum_chunk_units = ((size_t)1 << 21) / sizeof(Header);
+const size_t default_minimum_chunk_units = ((size_t)1 << 21) / sizeof(Header);
 static size_t page_size = 0;
 
-void arena_create(Arena* a, size_t minimum_chunk_units) {
+static Arena default_arena = {0};
+static bool default_arena_initialized = false;
+
+static void arena_create_internal(Arena* a, size_t minimum_chunk_units) {
   a->chunk_list = NULL;
   a->free_list.next = NULL;
   a->free_list.unit_count = 0;
   a->free_list_start = NULL;
   a->minimum_chunk_units = minimum_chunk_units;
+}
+
+void arena_create(Arena* a, size_t minimum_chunk_units) {
+  if (a == NULL) {
+    abort();
+  }
+  arena_create_internal(a, minimum_chunk_units);
 }
 
 // Prepends the new `Chunk`, of `byte_count` bytes, to the `a->chunk_list`.
@@ -146,6 +157,14 @@ void* arena_malloc(Arena* a, size_t count, size_t size) {
   }
   unit_count = unit_count / sizeof(Header) + 1;
 
+  if (a == NULL) {
+    if (!default_arena_initialized) {
+      arena_create_internal(&default_arena, default_minimum_chunk_units);
+      default_arena_initialized = true;
+    }
+    a = &default_arena;
+  }
+
   Header* p;
   Header* previous;
 
@@ -213,15 +232,28 @@ static void check_free(Arena* a, void* p) {
 }
 
 void arena_free(Arena* a, void* p) {
+  if (a == NULL) {
+    if (!default_arena_initialized) {
+      abort();
+    }
+    a = &default_arena;
+  }
   check_free(a, p);
   free_internal(a, p);
 }
 
-void arena_destroy(Arena* a) {
+static void arena_destroy_internal(Arena* a) {
   for (Chunk* c = a->chunk_list; c != NULL;) {
     Chunk* next = c->next;
     const int r = munmap(c, c->byte_count);
     assert(r == 0);
     c = next;
   }
+}
+
+void arena_destroy(Arena* a) {
+  if (a == NULL) {
+    abort();
+  }
+  arena_destroy_internal(a);
 }
