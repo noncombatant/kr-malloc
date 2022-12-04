@@ -31,6 +31,16 @@ void arena_destroy(Arena* a);
 
 // Implementation details below this point.
 
+// A `Chunk` is a unit of memory provided from outside the allocator (such as
+// the OS via `mmap`). This list keeps track of them so that we can release them
+// back to the OS.
+typedef struct Chunk {
+  struct Chunk* next;
+  size_t byte_count;
+} Chunk;
+
+// A `Header` describes an entry in an `Arena`’s free list: a region of memory
+// that can be divided up and returned to the caller.
 typedef struct Header {
   struct Header* next;
   size_t unit_count;
@@ -45,23 +55,24 @@ typedef struct Header {
 typedef long double Alignment;
 static_assert(sizeof(Header) == sizeof(Alignment), "Add padding to `Header`");
 
-typedef struct Chunk {
-  struct Chunk* next;
-  size_t byte_count;
-} Chunk;
-
+// An `Arena` is metadata that describes a set of `Chunk`s and the `Header`s
+// that make up its free list. A caller can create and use as many arenas as
+// they like.
 struct Arena {
+  // The head of the chunk list.
   Chunk* chunk_list;
 
+  // The head of the free list.
   Header free_list;
 
+  // Where we last left off in a search of the free list.
+  //
   // `NULL` is a sentinel value indicating that `free_list` has not yet been
   // initialized.
   Header* free_list_start;
 
   // We always request at least this amount from the operating system. The value
   // should be chosen (a) to reduce pressure on the page table; and (b) to
-  // reduce
-  // the number of times we need to invoke the kernel.
+  // reduce the number of times we need to invoke the kernel.
   size_t minimum_chunk_units;
 };
