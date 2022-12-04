@@ -3,19 +3,16 @@
 
 // `Arena` is a metadata structure that describes a (set of) allocation
 // region(s). You can use 1 for the entire process, or 1 per thread, or 1 per
-// object lifetime, or some combination — whatever is most appropriate for your
-// application.
+// object lifetime, or whatever you like.
 typedef struct Arena Arena;
 
 // Initializes the new `Arena`, setting its `minimum_chunk_units`, which is
 // measured in `sizeof(Header)` _units_.
-//
-// If `a` is `NULL`, `abort`s.
 void arena_create(Arena* a, size_t minimum_chunk_units);
 
 // This is a good value to use for `Arena.minimum_chunk_units` for most
 // applications. It is tuned to be appropriate for the platform.
-extern const size_t default_minimum_chunk_units;
+extern size_t default_minimum_chunk_units;
 
 // Returns a pointer to a memory region containing at least `count * size`
 // bytes. Checks the multiplication for overflow.
@@ -25,16 +22,11 @@ extern const size_t default_minimum_chunk_units;
 // Returns `NULL` and sets `errno` if there was an error.
 void* arena_malloc(Arena* a, size_t count, size_t size);
 
-// Puts the memory region that `p` points to back onto the `Arena`’s free
-// list.
-//
-// If `a` is `NULL`, frees memory in the default global arena.
+// Puts the memory region that `p` points to back onto the free list.
 void arena_free(Arena* a, void* p);
 
 // Returns all memory in the `Arena` back to the platform. All allocations made
 // inside the arena will be invalid after this function returns.
-//
-// If `a` is `NULL`, `abort`s.
 void arena_destroy(Arena* a);
 
 // Implementation details below this point.

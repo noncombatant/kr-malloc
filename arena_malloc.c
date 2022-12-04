@@ -12,11 +12,8 @@
 #define add(a, b, result) __builtin_add_overflow(a, b, result)
 #define mul(a, b, result) __builtin_mul_overflow(a, b, result)
 
-const size_t default_minimum_chunk_units = ((size_t)1 << 21) / sizeof(Header);
+size_t default_minimum_chunk_units = ((size_t)1 << 21) / sizeof(Header);
 static size_t page_size = 0;
-
-static Arena default_arena = {0};
-static bool default_arena_initialized = false;
 
 static void arena_create_internal(Arena* a, size_t minimum_chunk_units) {
   a->chunk_list = NULL;
@@ -158,14 +155,6 @@ void* arena_malloc(Arena* a, size_t count, size_t size) {
   }
   unit_count = unit_count / sizeof(Header) + 1;
 
-  if (a == NULL) {
-    if (!default_arena_initialized) {
-      arena_create_internal(&default_arena, default_minimum_chunk_units);
-      default_arena_initialized = true;
-    }
-    a = &default_arena;
-  }
-
   Header* p;
   Header* previous;
 
@@ -233,28 +222,15 @@ static void check_free(Arena* a, void* p) {
 }
 
 void arena_free(Arena* a, void* p) {
-  if (a == NULL) {
-    if (!default_arena_initialized) {
-      abort();
-    }
-    a = &default_arena;
-  }
   check_free(a, p);
   free_internal(a, p);
 }
 
-static void arena_destroy_internal(Arena* a) {
+void arena_destroy(Arena* a) {
   for (Chunk* c = a->chunk_list; c != NULL;) {
     Chunk* next = c->next;
     const int r = munmap(c, c->byte_count);
     assert(r == 0);
     c = next;
   }
-}
-
-void arena_destroy(Arena* a) {
-  if (a == NULL) {
-    abort();
-  }
-  arena_destroy_internal(a);
 }
