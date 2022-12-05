@@ -14,24 +14,26 @@ typedef struct Arena Arena;
 
 // Initializes the new `Arena`, setting its `minimum_chunk_units`, which is
 // measured in `sizeof(Header)` _units_.
-void arena_create(Arena* a, size_t minimum_chunk_units);
+void arena_create(Arena* a, size_t minimum_chunk_units)
+    __attribute__((nonnull));
 
 // This is a good value to use for `Arena.minimum_chunk_units` for most
 // applications. It is tuned to be appropriate for the platform.
-extern size_t default_minimum_chunk_units;
+extern const size_t default_minimum_chunk_units;
 
 // Returns a pointer to a memory region containing at least `count * size`
 // bytes. Checks the multiplication for overflow.
 //
 // Returns `NULL` and sets `errno` if there was an error.
-void* arena_malloc(Arena* a, size_t count, size_t size);
+void* arena_malloc(Arena* a, size_t count, size_t size)
+    __attribute__((malloc, nonnull));
 
 // Puts the memory region that `p` points to back onto the free list.
-void arena_free(Arena* a, void* p);
+void arena_free(Arena* a, void* p) __attribute__((nonnull));
 
 // Returns all memory in the `Arena` back to the platform. All allocations made
 // inside the arena will be invalid after this function returns.
-void arena_destroy(Arena* a);
+void arena_destroy(Arena* a) __attribute__((nonnull));
 
 // Implementation details below this point.
 

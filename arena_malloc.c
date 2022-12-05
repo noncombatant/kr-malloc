@@ -25,7 +25,7 @@ static void unlock(atomic_flag* f) {
   atomic_flag_clear_explicit(f, memory_order_release);
 }
 
-size_t default_minimum_chunk_units = ((size_t)1 << 21) / sizeof(Header);
+const size_t default_minimum_chunk_units = ((size_t)1 << 21) / sizeof(Header);
 static size_t page_size = 0;
 
 static void arena_create_internal(Arena* a, size_t minimum_chunk_units) {
@@ -106,8 +106,7 @@ static Header* get_1st_header(Chunk* chunk) {
   // to maintain a dedicated memory mapping for it. That could be more
   // space-efficient, at the cost of additional code and (possibly?) reduced
   // data locality.
-  char* char_chunk = (char*)chunk;
-  char_chunk += page_size;
+  char* char_chunk = ((char*)chunk) + page_size;
 
   // Regarding this pointer trickery, clang warns us:
   //
@@ -127,9 +126,8 @@ static Header* get_1st_header(Chunk* chunk) {
 //
 // Returns `NULL` and sets `errno` if there was an error.
 static Header* get_more_memory(Arena* a, size_t unit_count) {
-  if (unit_count < a->minimum_chunk_units) {
-    unit_count = a->minimum_chunk_units;
-  }
+  unit_count =
+      unit_count < a->minimum_chunk_units ? a->minimum_chunk_units : unit_count;
   size_t byte_count;
   if (mul(unit_count, sizeof(Header), &byte_count) ||
       add(byte_count, page_size, &byte_count)) {
@@ -213,26 +211,20 @@ void* arena_malloc(Arena* a, size_t count, size_t size) {
 // perfect test that `p` is exactly a pointer previously returned by
 // `arena_malloc`, but it’s better than what we started with.
 //
-// `assert`s false if `p` is not inside a known `Chunk`.
+// `abort`s if `p` is not inside a known `Chunk`.
 static void check_free(Arena* a, void* p) {
-  assert(page_size != 0);
-
   const uintptr_t pu = (uintptr_t)p;
   uintptr_t usable_start = 0, usable_end = 0;
   for (Chunk* c = a->chunk_list; c != NULL; c = c->next) {
     const uintptr_t cu = (uintptr_t)c;
     assert(cu % page_size == 0);
-
     usable_start = cu + page_size;
     usable_end = cu + c->byte_count - sizeof(Header);
     if (pu >= usable_start && pu <= usable_end) {
       return;
     }
   }
-
-  // There’s nothing we can do. The caller has made an error, and we’re all
-  // going to die.
-  assert(false);
+  abort();
 }
 
 void arena_free(Arena* a, void* p) {
@@ -246,8 +238,7 @@ void arena_destroy(Arena* a) {
   lock(&(a->lock));
   for (Chunk* c = a->chunk_list; c != NULL;) {
     Chunk* next = c->next;
-    const int r = munmap(c, c->byte_count);
-    if (r) {
+    if (munmap(c, c->byte_count)) {
       abort();
     }
     c = next;
