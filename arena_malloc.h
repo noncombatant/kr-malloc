@@ -1,9 +1,15 @@
 #include <assert.h>
+#include <stdatomic.h>
 #include <stddef.h>
 
 // `Arena` is a metadata structure that describes a (set of) allocation
 // region(s). You can use 1 for the entire process, or 1 per thread, or 1 per
 // object lifetime, or whatever you like.
+//
+// Each arena has its own free list, regions of memory to allocate from (see
+// `Chunk`, below), and lock (to maintain consistency when called by multiple
+// threads). Callers can reduce lock contention by giving each thread its own
+// arena(s), or otherwise minimizing sharing arenas among threads.
 typedef struct Arena Arena;
 
 // Initializes the new `Arena`, setting its `minimum_chunk_units`, which is
@@ -16,8 +22,6 @@ extern size_t default_minimum_chunk_units;
 
 // Returns a pointer to a memory region containing at least `count * size`
 // bytes. Checks the multiplication for overflow.
-//
-// If `a` is `NULL`, allocates memory in the default global arena.
 //
 // Returns `NULL` and sets `errno` if there was an error.
 void* arena_malloc(Arena* a, size_t count, size_t size);
@@ -58,7 +62,13 @@ static_assert(sizeof(Header) == sizeof(Alignment), "Add padding to `Header`");
 // An `Arena` is metadata that describes a set of `Chunk`s and the `Header`s
 // that make up its free list. A caller can create and use as many arenas as
 // they like.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
 struct Arena {
+  // This implementation uses a simple spin lock. Under contention, it starts
+  // affecting performance.
+  atomic_flag lock;
+
   // The head of the chunk list.
   Chunk* chunk_list;
 
@@ -76,3 +86,4 @@ struct Arena {
   // reduce the number of times we need to invoke the kernel.
   size_t minimum_chunk_units;
 };
+#pragma clang diagnostic pop

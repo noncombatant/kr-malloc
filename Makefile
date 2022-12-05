@@ -23,9 +23,11 @@ arena: kr_malloc_test.c arena_malloc.c arena_malloc.h get_utc_nanoseconds.c
 	cp arena_malloc.h kr_malloc.h
 	$(CC) $(CFLAGS) -DARENA -o kr_malloc_test kr_malloc_test.c kr_malloc.c get_utc_nanoseconds.c
 	./kr_malloc_test
+	$(CC) $(CFLAGS) -o arena_threads_test arena_threads_test.c arena_malloc.c get_utc_nanoseconds.c
+	./arena_threads_test
 
 clean:
 	- rm -f *.o
-	- rm -f kr_malloc_test
+	- rm -f kr_malloc_test arena_threads_test
 	- rm -f kr_malloc.h kr_malloc.c
 	- rm -rf kr_malloc_test.dSYM

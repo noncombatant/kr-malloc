@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "arena_malloc.h"
@@ -12,10 +13,23 @@
 #define add(a, b, result) __builtin_add_overflow(a, b, result)
 #define mul(a, b, result) __builtin_mul_overflow(a, b, result)
 
+// For more information about locks and tuning them, see
+// https://rigtorp.se/spinlock/. Here, we optimize for simple implementation.
+
+static void lock(atomic_flag* f) {
+  do {
+  } while (atomic_flag_test_and_set_explicit(f, memory_order_acquire));
+}
+
+static void unlock(atomic_flag* f) {
+  atomic_flag_clear_explicit(f, memory_order_release);
+}
+
 size_t default_minimum_chunk_units = ((size_t)1 << 21) / sizeof(Header);
 static size_t page_size = 0;
 
 static void arena_create_internal(Arena* a, size_t minimum_chunk_units) {
+  atomic_flag_clear(&(a->lock));
   a->chunk_list = NULL;
   a->free_list.next = NULL;
   a->free_list.unit_count = 0;
@@ -24,9 +38,6 @@ static void arena_create_internal(Arena* a, size_t minimum_chunk_units) {
 }
 
 void arena_create(Arena* a, size_t minimum_chunk_units) {
-  if (a == NULL) {
-    abort();
-  }
   if (page_size == 0) {
     page_size = (size_t)sysconf(_SC_PAGESIZE);
   }
@@ -157,6 +168,7 @@ void* arena_malloc(Arena* a, size_t count, size_t size) {
 
   Header* p;
   Header* previous;
+  lock(&(a->lock));
 
   // Determine whether `a->free_list` has been initialized. Note that if it has
   // not been, the `for` loop below this one will fall through to the call to
@@ -181,6 +193,7 @@ void* arena_malloc(Arena* a, size_t count, size_t size) {
         p->unit_count = unit_count;
       }
       a->free_list_start = previous;
+      unlock(&(a->lock));
       return p + 1;
     }
 
@@ -188,6 +201,7 @@ void* arena_malloc(Arena* a, size_t count, size_t size) {
     // points to its beginning), we need to get more memory.
     if (p == a->free_list_start) {
       if ((p = get_more_memory(a, unit_count)) == NULL) {
+        unlock(&(a->lock));
         return NULL;
       }
     }
@@ -222,15 +236,24 @@ static void check_free(Arena* a, void* p) {
 }
 
 void arena_free(Arena* a, void* p) {
+  lock(&(a->lock));
   check_free(a, p);
   free_internal(a, p);
+  unlock(&(a->lock));
 }
 
 void arena_destroy(Arena* a) {
+  lock(&(a->lock));
   for (Chunk* c = a->chunk_list; c != NULL;) {
     Chunk* next = c->next;
     const int r = munmap(c, c->byte_count);
-    assert(r == 0);
+    if (r) {
+      abort();
+    }
     c = next;
   }
+  a->chunk_list = NULL;
+  a->free_list_start = NULL;
+  memset(&(a->free_list), 0, sizeof(a->free_list));
+  unlock(&(a->lock));
 }
