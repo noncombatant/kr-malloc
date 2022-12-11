@@ -30,4 +30,4 @@ clean:
 	- rm -f *.o
 	- rm -f kr_malloc_test arena_threads_test
 	- rm -f kr_malloc.h kr_malloc.c
-	- rm -rf kr_malloc_test.dSYM
+	- rm -rf kr_malloc_test.dSYM arena_threads_test.dSYM
