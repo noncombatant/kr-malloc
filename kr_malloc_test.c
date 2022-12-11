@@ -9,14 +9,19 @@
 
 #define iterations 1000
 
+// Touch every page to ensure the benchmark doesn’t get noisier than it already
+// is due to lazy commitment/page faults.
+static void touch_pages(void* p, size_t byte_count) {
+  char* pp = p;
+  for (size_t i = 0; i < byte_count; i += 4096) {
+    pp[i] = 0;
+  }
+}
+
 int main() {
   const size_t iterations_size = iterations * sizeof(char*);
   char** ps = malloc(iterations_size);
-  // Touch every page to ensure the benchmark doesn’t get noisier than it
-  // already is due to lazy commitment/page faults.
-  for (size_t i = 0; i < iterations_size; i += 4096) {
-    ps[i] = NULL;
-  }
+  touch_pages(ps, iterations_size);
 
 #if defined(ARENA)
   Arena a;
@@ -51,9 +56,9 @@ int main() {
   }
 
   const int64_t end = GetUTCNanoseconds();
-  printf("total: %" PRId64 " ns = mallocs %" PRId64 " ns + frees %" PRId64
-         " ns\n",
-         end - start, after_allocations - start, end - after_allocations);
+  printf("ns per malloc: %" PRId64 ", ns per free: %" PRId64 "\n",
+         (after_allocations - start) / iterations,
+         (end - after_allocations) / iterations);
 
 #if defined(ARENA)
   arena_destroy(&a);
