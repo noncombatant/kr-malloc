@@ -13,6 +13,10 @@
 #define add(a, b, result) __builtin_add_overflow(a, b, result)
 #define mul(a, b, result) __builtin_mul_overflow(a, b, result)
 
+// Set this to true to run `check_free` in `arena_free`. `check_free`’s
+// algorithm is very slow, making it unsuitable for production.
+static const bool do_check_free = false;
+
 // For more information about locks and tuning them, see
 // https://rigtorp.se/spinlock/. Here, we optimize for simple implementation.
 
@@ -229,7 +233,9 @@ static void check_free(Arena* a, void* p) {
 
 void arena_free(Arena* a, void* p) {
   lock(&(a->lock));
-  check_free(a, p);
+  if (do_check_free) {
+    check_free(a, p);
+  }
   free_internal(a, p);
   unlock(&(a->lock));
 }
