@@ -24,7 +24,7 @@ arena: kr_malloc_test.c arena_malloc.c arena_malloc.h get_utc_nanoseconds.c
 	$(CC) $(CFLAGS) -DARENA -o kr_malloc_test kr_malloc_test.c kr_malloc.c get_utc_nanoseconds.c
 	./kr_malloc_test
 	$(CC) $(CFLAGS) -o arena_threads_test arena_threads_test.c arena_malloc.c get_utc_nanoseconds.c
-	./arena_threads_test
+	./arena_threads_test 100000 5 64
 
 clean:
 	- rm -f *.o
