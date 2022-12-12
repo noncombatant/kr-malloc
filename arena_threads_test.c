@@ -8,7 +8,7 @@
 #include <string.h>
 
 #include "get_utc_nanoseconds.h"
-#include "kr_malloc.h"
+#include "arena_malloc.h"
 
 static const char HelpMessage[] =
     "Benchmarks the allocator, allowing the caller to set the number of\n"

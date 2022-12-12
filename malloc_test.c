@@ -5,7 +5,16 @@
 #include <string.h>
 
 #include "get_utc_nanoseconds.h"
-#include "kr_malloc.h"
+
+#if defined(ORIGINAL)
+#include "original_kr_malloc.h"
+#elif defined(MODERN)
+#include "modern_kr_malloc.h"
+#elif defined(ARENA)
+#include "arena_malloc.h"
+#else
+#error No flavor specified
+#endif
 
 #define iterations 1000
 
@@ -31,12 +40,12 @@ int main() {
   const int64_t start = GetUTCNanoseconds();
 
   for (size_t i = 1; i < iterations; i++) {
-#if defined(ORIGINAL_FLAVOR)
+#if defined(ORIGINAL)
     char* p = kr_malloc(i * 1);
+#elif defined(MODERN)
+    char* p = kr_malloc(i, 1);
 #elif defined(ARENA)
     char* p = arena_malloc(&a, i, 1);
-#else
-    char* p = kr_malloc(i, 1);
 #endif
     ps[i] = p;
     if (p == NULL) {

@@ -1,6 +1,6 @@
 #include <stddef.h>
 
-#include "kr_malloc.h"
+#include "original_kr_malloc.h"
 
 typedef long Align;   /* for alignment to long boundary */
 
