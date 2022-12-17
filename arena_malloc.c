@@ -152,21 +152,26 @@ static Header* get_more_memory(Arena* a, size_t unit_count) {
   return a->free_list_start;
 }
 
-void* arena_malloc(Arena* a, size_t count, size_t size) {
+// Computes the count of `Header`-sized units necessary to store `count * size`
+// bytes, + 1 for the actual `Header` metadata that describes the region.
+static size_t get_unit_count(size_t count, size_t size) {
   size_t byte_count;
-  if (mul(count, size, &byte_count)) {
-    errno = EINVAL;
-    return NULL;
+  if (mul(count, size, &byte_count) || byte_count == 0) {
+    return 0;
   }
-
-  // Round up to an integer number of `Header`-sized units, and add 1 to account
-  // for the actual `Header` metadata that describes the region.
   size_t unit_count;
   if (add(byte_count, sizeof(Header) - 1, &unit_count)) {
+    return 0;
+  }
+  return unit_count / sizeof(Header) + 1;
+}
+
+void* arena_malloc(Arena* a, size_t count, size_t size) {
+  const size_t unit_count = get_unit_count(count, size);
+  if (unit_count == 0) {
     errno = EINVAL;
     return NULL;
   }
-  unit_count = unit_count / sizeof(Header) + 1;
 
   Header* p;
   Header* previous;
