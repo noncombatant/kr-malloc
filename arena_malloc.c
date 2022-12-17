@@ -17,6 +17,13 @@
 // algorithm is very slow, making it unsuitable for production.
 static const bool do_check_free = false;
 
+// Set this to true to `memset` regions with `overwrite_on_free_value` before
+// freeing them. The cost of the `memset` will come to dominate the time taken
+// to free as the allocation size grows, so this may be unsuitable for
+// production.
+static const bool overwrite_on_free = false;
+static const char overwrite_on_free_value = 0x0c;
+
 // For more information about locks and tuning them, see
 // https://rigtorp.se/spinlock/. Here, we optimize for simple implementation.
 
@@ -240,6 +247,10 @@ void arena_free(Arena* a, void* p) {
   lock(&(a->lock));
   if (do_check_free) {
     check_free(a, p);
+  }
+  if (overwrite_on_free) {
+    const Header* h = (Header*)p - 1;
+    memset(p, overwrite_on_free_value, (h->unit_count - 1) * sizeof(Header));
   }
   free_internal(a, p);
   unlock(&(a->lock));
