@@ -1,0 +1,2 @@
+document the meaning of the _internal convention: usually multiple callers; does
+not need to check arguments because private
