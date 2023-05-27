@@ -1,3 +1,6 @@
+// Copyright 2022 by [Chris Palmer](https://noncombatant.org)
+// SPDX-License-Identifier: Apache-2.0
+
 #include <stddef.h>
 
 // Returns a pointer to a memory region containing at least `count * size`

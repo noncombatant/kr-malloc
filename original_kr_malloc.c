@@ -1,3 +1,6 @@
+// Transcribed from pp. 185 – 189 of K&R, 2nd edition. Copyright 1988, 1978, by
+// Bell Telephone Laboratories, Incorporated.
+
 #include <stddef.h>
 
 #include "original_kr_malloc.h"
